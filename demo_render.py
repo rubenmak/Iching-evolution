@@ -21,51 +21,36 @@ GRID_W = 48
 GRID_H = 16
 SEED = 113
 
-# Gens per epoch (keyed by epoch id).
-# Research showed: early epochs saturate in 5-10 gens; singularity collapses
-# hex diversity fast — 50 gens shows the full cascade dramatically.
-# Epoch 9 = Conway / Before Form: 35 gens of S23 line dynamics before chemistry.
-EPOCH_GENS = {9: 35, 0: 20, 1: 20, 2: 25, 3: 30, 4: 20, 5: 18, 6: 25, 7: 22, 8: 50}
+EPOCH_GENS = {9: 35, 0: 20, 1: 20, 2: 25, 3: 30, 4: 20, 5: 18, 6: 30, 7: 22, 8: 50,
+              10: 80, 11: 90, 12: 60}
 
-BB_SYMBOL      = 100        # ☯ — only used in Big Bang frame 0
-BB_FRAMES      = 13         # total animation frames for the Big Bang epoch
-BB_HOLD_FRAMES = 4          # frames showing ☯ alone before expansion (4 × 350ms = 1.4s)
-BB_VOID_PROB   = 0.30       # 30 % of space between heaven/earth is void
+BB_SYMBOL      = 100
+BB_FRAMES      = 13
+BB_HOLD_FRAMES = 4
+BB_VOID_PROB   = 0.30
 
-# Cell canvas dimensions
 CW, CH = 13, 17
-GRID_PX_W = GRID_W * CW    # 624
-GRID_PX_H = GRID_H * CH    # 272
+GRID_PX_W = GRID_W * CW
+GRID_PX_H = GRID_H * CH
 CHART_H   = 460
 
 
 
-# ── Big Bang scripted animation ───────────────────────────────────────────────
-
 def generate_big_bang():
-    """
-    Circular expansion: the universe grows as a ring outward from ☯ at the centre.
-    Top arc of the ring = Heaven (☰), bottom arc = Earth (☷).
-    Interior fills with yin/yang lines using a vertical gradient:
-    yang at top (y=0), yin at bottom (y=GRID_H-1).
-    """
-    HEAVEN = TRIG_BASE + 7   # ☰ all-yang trigram
-    EARTH  = TRIG_BASE + 0   # ☷ all-yin  trigram
+    HEAVEN = TRIG_BASE + 7
+    EARTH  = TRIG_BASE + 0
     cy     = GRID_H // 2
     cx     = GRID_W // 2
-
-    # Pixel-space geometry for a visually circular ring
     cx_px  = cx * CW
     cy_px  = cy * CH
-    ring_w = CW * 2.0   # ring thickness in pixels (≈ 2 cell widths)
+    ring_w = CW * 2.0
 
-    # Radius that just clears the farthest cell centre from the grid centre
     max_r = max(
         math.sqrt(((x + 0.5) * CW - cx_px) ** 2 + ((y + 0.5) * CH - cy_px) ** 2)
         for x in range(GRID_W) for y in range(GRID_H)
     ) + ring_w
 
-    expand_frames = BB_FRAMES - BB_HOLD_FRAMES   # frames dedicated to ring expansion
+    expand_frames = BB_FRAMES - BB_HOLD_FRAMES
 
     random.seed(SEED)
     frames = []
@@ -74,10 +59,9 @@ def generate_big_bang():
         cells = [EMPTY] * (GRID_W * GRID_H)
 
         if fi < BB_HOLD_FRAMES:
-            # Hold on the primordial ☯ symbol
             cells[cy * GRID_W + cx] = BB_SYMBOL
         else:
-            expand_fi = fi - BB_HOLD_FRAMES + 1   # 1 … expand_frames
+            expand_fi = fi - BB_HOLD_FRAMES + 1
             ring_r = (expand_fi / expand_frames) * max_r
 
             for y in range(GRID_H):
@@ -87,13 +71,10 @@ def generate_big_bang():
                     dist = math.sqrt((px - cx_px) ** 2 + (py - cy_px) ** 2)
 
                     if dist > ring_r + ring_w / 2:
-                        # Outside the expanding universe — remain void
                         continue
                     elif dist >= ring_r - ring_w / 2:
-                        # On the ring boundary: Heaven arcs above, Earth below
                         cells[y * GRID_W + x] = HEAVEN if y < cy else EARTH
                     else:
-                        # Inside the universe: yin/yang gradient (yang↑ yin↓, matching Heaven top/Earth bottom)
                         if random.random() < BB_VOID_PROB:
                             continue
                         yang_prob = 1.0 - y / (GRID_H - 1)
@@ -115,7 +96,54 @@ def generate_big_bang():
     return frames
 
 
-# ── Conway + I Ching simulation ───────────────────────────────────────────────
+def generate_void_expansion(g):
+    """
+    Void expands from center outward while phase-9 simulation continues underneath.
+    Clean circular void, no ring. 13 frames; last frame completely empty.
+    """
+    cy     = GRID_H // 2
+    cx     = GRID_W // 2
+    cx_px  = cx * CW
+    cy_px  = cy * CH
+
+    max_r = max(
+        math.sqrt(((x + 0.5) * CW - cx_px) ** 2 + ((y + 0.5) * CH - cy_px) ** 2)
+        for x in range(GRID_W) for y in range(GRID_H)
+    ) + CW
+
+    frames = []
+    for fi in range(BB_FRAMES):
+        g.step(phase=9)
+        void_r = (fi / (BB_FRAMES - 1)) * max_r
+        cells  = [g.cells[gy][gx] for gy in range(GRID_H) for gx in range(GRID_W)]
+
+        for i in range(GRID_W * GRID_H):
+            ix = i % GRID_W
+            iy = i // GRID_W
+            px = (ix + 0.5) * CW
+            py = (iy + 0.5) * CH
+            dist = math.sqrt((px - cx_px) ** 2 + (py - cy_px) ** 2)
+            if dist <= void_r:
+                cells[i] = EMPTY
+
+        yin  = cells.count(YIN)
+        yang = cells.count(YANG)
+        tc   = [0] * 8
+        hc   = [0] * 64
+        for cv in cells:
+            if is_trigram(cv):
+                tc[trig_idx(cv)] += 1
+            elif is_hexagram(cv):
+                hc[hex_idx(cv)] += 1
+
+        frames.append({
+            "cells":   cells,
+            "yin": yin, "yang": yang, "syin": 0, "syang": 0,
+            "tc": tc, "hc": hc, "top_hex": None,
+        })
+
+    return frames
+
 
 def capture_frames(g, phase, gens, conway_lines=False):
     frames = []
@@ -123,7 +151,6 @@ def capture_frames(g, phase, gens, conway_lines=False):
         g.step(phase, conway_lines=conway_lines)
         yin, yang, syin, syang, tc, hc = g.counts()
         top_hex = max(range(64), key=lambda i: hc[i]) if sum(hc) > 0 else None
-        # Flat indices of cells that mutated this gen (phases 5-6 only)
         changed = sorted(y * GRID_W + x for y, x in g.last_changed) if phase >= 5 else []
         frames.append({
             "cells":   [g.cells[y][x] for y in range(GRID_H) for x in range(GRID_W)],
@@ -133,12 +160,9 @@ def capture_frames(g, phase, gens, conway_lines=False):
     return frames
 
 
-# ── Build ─────────────────────────────────────────────────────────────────────
-
 def build():
     all_epochs = []
 
-    # ── Big Bang (scripted) ────────────────────────────────────────────────
     print("  epoch BB: THE BIG BANG...", flush=True)
     bb_frames = generate_big_bang()
     all_epochs.append({
@@ -156,33 +180,27 @@ def build():
         "frames": bb_frames,
     })
 
-    # ── Seed the Void grid from the last Big Bang frame ────────────────────
     last_bb = bb_frames[-1]["cells"]
     HEAVEN  = TRIG_BASE + 7
     EARTH   = TRIG_BASE + 0
 
-    random.seed(SEED + 1)    # independent seed for the simulation proper
+    random.seed(SEED + 1)
     g = Grid(GRID_W, GRID_H)
     for i, cv in enumerate(last_bb):
         y, x = i // GRID_W, i % GRID_W
-        # Carry yin/yang lines and Heaven/Earth trigrams; drop BB_SYMBOL
         if cv not in (BB_SYMBOL, EMPTY):
             g.cells[y][x] = cv
 
-    # ── Regular epochs (continuous simulation) ─────────────────────────────
     for ep in EPOCHS:
         print(f"  epoch {ep['id']}: {ep['title']} (phase {ep['phase']})...", flush=True)
         phase = ep["phase"]
         gens  = EPOCH_GENS[ep["id"]]
 
-        # If the grid is completely empty (e.g. after the Big Bang void collapse),
-        # re-seed with the epoch's init density — a new big bang from the void.
         occupied = sum(1 for row in g.cells for c in row if c != EMPTY)
         if occupied == 0:
             print(f"    → grid empty, re-seeding ({ep['init_yin']*100:.0f}%/{ep['init_yang']*100:.0f}%)", flush=True)
             g.seed(ep["init_yin"], ep["init_yang"])
 
-        # Frame 0 = carry-over state (0 extra gens); then 1 gen per frame.
         yin, yang, syin, syang, tc, hc = g.counts()
         seed_frame = {
             "cells":   [g.cells[y][x] for y in range(GRID_H) for x in range(GRID_W)],
@@ -202,7 +220,16 @@ def build():
             "frames":  frames,
         })
 
-    # ── Serialise ──────────────────────────────────────────────────────────
+    print("  epoch rBB: RETURN TO VOID (void expansion)...", flush=True)
+    void_frames = generate_void_expansion(g)
+    all_epochs.append({
+        "id": -2, "phase": -1, "bigbang": True,
+        "name": "回歸", "title": "RETURN TO VOID",
+        "sub": "Huí Guī · The Void Returns",
+        "desc": "From the centre, a circle of pure void spreads outward. What remains is consumed. Lines and trigrams continue their dying even as the void overtakes them — matter dissolving as it is erased. When the void reaches the edge of all things, everything disappears. The ☯ waits. A new potential stirs.",
+        "frames": void_frames,
+    })
+
     palette = {
         "yin":    YIN_COLOR,
         "yang":   YANG_COLOR,
@@ -221,7 +248,6 @@ def build():
         for i in range(64)
     ]
 
-    # safe() for JS object literals; safe_str() for JSON.parse('...') string embedding
     safe     = lambda s: s.replace("</", "<\\/")
     def safe_str(s):
         s = s.replace("\\", "\\\\")   # must be first
@@ -233,9 +259,7 @@ def build():
     jtmeta   = safe(json.dumps(trig_meta,  ensure_ascii=False))
     jhmeta   = safe(json.dumps(hex_meta,   ensure_ascii=False))
 
-    # Delays per epoch (BB + 10 regular = 11 values), ms per frame at 1× speed.
-    # Singularity is faster to sell the cascade energy (50 frames × 45ms = 2.25s).
-    delays = json.dumps([350, 80, 65, 65, 65, 65, 65, 65, 65, 65, 45])
+    delays = json.dumps([65, 80, 65, 65, 65, 65, 65, 65, 65, 65, 45, 55, 60, 65, 65])
 
     html = TEMPLATE
     for k, v in [
@@ -255,8 +279,6 @@ def build():
         html = html.replace(k, v)
     return html
 
-
-# ── HTML template ─────────────────────────────────────────────────────────────
 
 TEMPLATE = r"""<!DOCTYPE html>
 <html lang="en">
@@ -285,6 +307,8 @@ h2 { font-size: .58em; color: #281e40; letter-spacing: .14em; text-align: center
            line-height: 1.35; overflow: hidden; margin: 2px 0; white-space: normal; }
 #pbar-wrap { height: 2px; background: #100818; }
 #pbar { height: 100%; width: 0; transition: width .18s linear; }
+#ent-wrap { height: 3px; background: #080618; }
+#ent-bar  { height: 100%; width: 0; transition: width .3s ease; background: #3858b0; }
 #legend { padding: 4px 8px 3px; border-top: 1px solid #100818;
           font-size: .58em; color: #302048; display: flex; gap: 10px;
           flex-wrap: wrap; align-items: center; }
@@ -331,6 +355,7 @@ button.tog:not(.active) { opacity: 0.22; }
     </div>
   </div>
   <div id="pbar-wrap"><div id="pbar"></div></div>
+  <div id="ent-wrap"><div id="ent-bar"></div></div>
   <canvas id="cgrid"  width="__GPW__" height="__GPH__"></canvas>
   <canvas id="cchart" width="__GPW__" height="__CHTH__"></canvas>
   <div id="legend">
@@ -357,12 +382,6 @@ button.tog:not(.active) { opacity: 0.22; }
     <button class="sm spd" onclick="setSpeed(0.5, this)">&#189;&times;</button>
     <button class="sm spd active" onclick="setSpeed(1, this)">1&times;</button>
     <button class="sm spd" onclick="setSpeed(2, this)">2&times;</button>
-  </div>
-  <div class="ctrl-row">
-    <span class="spd-label">show</span>
-    <button class="tog active" onclick="toggleLayer('lines',this)">lines</button>
-    <button class="tog active" onclick="toggleLayer('trigs',this)">trigrams</button>
-    <button class="tog active" onclick="toggleLayer('hexs',this)">hexagrams</button>
   </div>
 </div>
 
@@ -398,11 +417,6 @@ const bctx   = cchart.getContext('2d');
 
 let ei=0, fi=0, tg=0, playing=true;
 const layers = { lines: true, trigs: true, hexs: true };
-function toggleLayer(name, btn) {
-  layers[name] = !layers[name];
-  btn.classList.toggle('active', layers[name]);
-  render();
-}
 function layerAlpha(c) {
   const STRONG_YIN = 75, STRONG_YANG = 76;
   if ((c >= 1 && c <= 2 || c === STRONG_YIN || c === STRONG_YANG) && !layers.lines) return 0.08;
@@ -413,7 +427,6 @@ function layerAlpha(c) {
 
 const STRONG_YIN = 75, STRONG_YANG = 76;
 
-// ── Cell helpers ──────────────────────────────────────────────────
 function cellChar(c) {
   if (c === 0)          return ' ';
   if (c === BB_SYM)     return '☯';
@@ -438,12 +451,11 @@ function cellColor(c) {
 }
 function cellFont(c, base) {
   if (c === BB_SYM)   return `bold ${base+3}px serif`;
-  if (c >= HEX_BASE)  return `bold ${base+2}px monospace`;  // larger than trigrams to stand out
+  if (c >= HEX_BASE)  return `bold ${base+2}px monospace`;
   if (c >= TRIG_BASE) return `${base}px monospace`;
   return `bold ${base+1}px monospace`;
 }
 
-// ── Grid renderer (canvas) ────────────────────────────────────────
 function drawGrid(fr) {
   gctx.fillStyle = PAL.bg;
   gctx.fillRect(0, 0, GPW, GH*CH);
@@ -456,7 +468,6 @@ function drawGrid(fr) {
     const x = i % GW, y = Math.floor(i / GW);
     const alpha = layerAlpha(c);
     gctx.globalAlpha = alpha;
-    // Hexagrams get a tinted background matching their trigram blend
     if (c >= HEX_BASE && c < 75) {
       gctx.fillStyle = PAL.hexbgs[(c - HEX_BASE) % 64];
       gctx.fillRect(x*CW + 1, y*CH + 1, CW - 2, CH - 2);
@@ -465,7 +476,6 @@ function drawGrid(fr) {
     gctx.font      = cellFont(c, 13);
     gctx.fillText(cellChar(c), x*CW + CW/2, y*CH + CH/2);
     gctx.globalAlpha = 1.0;
-    // Mutation ripple flash: bright ring on cells that just mutated (phases 5-6)
     if (changedSet.has(i)) {
       gctx.strokeStyle = '#a0ffee';
       gctx.globalAlpha = 0.82;
@@ -476,7 +486,6 @@ function drawGrid(fr) {
   }
 }
 
-// ── Bar chart renderer (horizontal, sorted by count) ─────────────
 function drawChart(fr) {
   const W = GPW, H = CHTH;
   const ROW_H = 15, HDR_H = 13, GAP = 4;
@@ -489,7 +498,6 @@ function drawChart(fr) {
 
   function drawSection(label, entries, secMax) {
     if (entries.length === 0) return;
-    // Section header line
     bctx.fillStyle = '#281e40';
     bctx.font = '8px monospace';
     bctx.textAlign = 'left';
@@ -499,26 +507,22 @@ function drawChart(fr) {
     oy += HDR_H;
 
     for (const e of entries) {
-      // Symbol
       bctx.fillStyle = e.color;
       bctx.font = (e.isHex ? '10px' : '12px') + ' monospace';
       bctx.textAlign = 'left';
       bctx.fillText(e.sym, 3, oy + ROW_H - 3);
 
-      // Name label
       bctx.fillStyle = '#544468';
       bctx.font = '9px monospace';
       bctx.textAlign = 'left';
       bctx.fillText(e.label.substring(0, 18), 18, oy + ROW_H - 3);
 
-      // Bar (normalised to section max)
       const bw = secMax > 0 ? Math.max(1, Math.round((e.count / secMax) * BAR_W)) : 0;
       bctx.fillStyle = e.color;
       bctx.globalAlpha = 0.72;
       bctx.fillRect(BAR_X, oy + 2, bw, ROW_H - 5);
       bctx.globalAlpha = 1.0;
 
-      // Count number
       bctx.fillStyle = '#706080';
       bctx.font = '9px monospace';
       bctx.textAlign = 'right';
@@ -529,7 +533,6 @@ function drawChart(fr) {
     oy += GAP;
   }
 
-  // Lines — all four types, most frequent on top
   const lEntries = [
     {sym: YIN_CHAR,  label: 'Yin · 陰',          count: fr.yin,   color: PAL.yin,   isHex: false},
     {sym: YANG_CHAR, label: 'Yang · 陽',          count: fr.yang,  color: PAL.yang,  isHex: false},
@@ -538,7 +541,6 @@ function drawChart(fr) {
   ].sort((a, b) => b.count - a.count);
   drawSection('lines', lEntries, Math.max(fr.yin, fr.yang, fr.syin || 0, fr.syang || 0, 1));
 
-  // Trigrams — non-zero only, sorted desc
   const tEntries = TMETA.map((t, i) => ({
     sym:   t.sym,
     label: t.el + ' · ' + t.name,
@@ -547,7 +549,6 @@ function drawChart(fr) {
   if (tEntries.length > 0)
     drawSection('trigrams', tEntries, Math.max(...tEntries.map(e => e.count), 1));
 
-  // Hexagrams — top 15 by count, non-zero, sorted desc
   const hEntries = fr.hc.map((count, i) => ({
     sym:   HEX_CHARS[i],
     label: HMETA[i] ? (HMETA[i].pin + ' · ' + HMETA[i].name) : ('hex ' + (i + 1)),
@@ -557,79 +558,82 @@ function drawChart(fr) {
     drawSection('hexagrams', hEntries, Math.max(...hEntries.map(e => e.count), 1));
 }
 
-// ── Phase labels ──────────────────────────────────────────────────
-// Index = phase + 1  (so phase -1 → index 0, phase 0 → 1, … phase 6 → 7)
 const PHASE_LABELS = [
-  'pre-formation',       // -1 (BB)
-  'yin · yang',          // 0
-  'trigrams emerge',     // 1
-  'hexagrams emerge',    // 2 hunter-gatherer
-  'cultivation',         // 3 agricultural
-  'industrial progress', // 4
-  'digital flux',        // 5
-  'singularity cascade', // 6
+  'pre-formation',
+  'yin · yang',
+  'trigrams emerge',
+  'hexagrams emerge',
+  'cultivation',
+  'industrial progress',
+  'digital flux',
+  'singularity cascade',
+  'loss of identity',
+  'collapse',
+  'return to void',
 ];
 const PHASE_COLORS = [
   '#20083a', '#281860', '#184828', '#281048',
   '#1a2808', '#280e06', '#041828', '#180428',
+  '#280808', '#200820', '#141014',
 ];
 
-// Per-epoch header background  (index = ei = position in D array, 0=BB)
 const BG_COLORS = [
-  '#04020c',  // Big Bang
-  '#0a0418',  // Before Form (Conway)
-  '#060610',  // Void
-  '#04090e',  // Chemistry
-  '#050f06',  // Life
-  '#040b02',  // Evolution
-  '#020a0e',  // Intelligence Awakens
-  '#0a0a02',  // Agricultural Civilisation
-  '#0e0a02',  // Industrial Civilisation
-  '#021428',  // Digital Civilisation
-  '#0a0214',  // Singularity
+  '#04020c',
+  '#0a0418',
+  '#060610',
+  '#04090e',
+  '#050f06',
+  '#040b02',
+  '#020a0e',
+  '#0a0a02',
+  '#0e0a02',
+  '#021428',
+  '#0a0214',
+  '#180a06',
+  '#100010',
+  '#080808',
+  '#04020c',
 ];
 const PBAR_COLORS = [
-  '#8030c0',  // Big Bang
-  '#8020c8',  // Before Form (Conway)
-  '#5050a0',  // Void
-  '#2060a0',  // Chemistry
-  '#208060',  // Life
-  '#60a020',  // Evolution
-  '#20a0a0',  // Intelligence Awakens
-  '#a0a020',  // Agricultural Civilisation
-  '#c0a020',  // Industrial Civilisation
-  '#2060c0',  // Digital Civilisation
-  '#a020e0',  // Singularity
+  '#8030c0',
+  '#8020c8',
+  '#5050a0',
+  '#2060a0',
+  '#208060',
+  '#60a020',
+  '#20a0a0',
+  '#a0a020',
+  '#c0a020',
+  '#2060c0',
+  '#a020e0',
+  '#c04020',
+  '#602080',
+  '#302030',
+  '#8030c0',
 ];
 
-// ── Header renderer ───────────────────────────────────────────────
 function render() {
   const ep = D[ei], fr = ep.frames[fi];
 
-  // Epoch identity
   document.getElementById('ep-name').textContent = ep.name + '  ' + ep.title;
   document.getElementById('ep-name').style.color = ep.bigbang ? PAL.bb : PBAR_COLORS[ei];
   document.getElementById('ep-sub').textContent  = ep.sub;
   document.getElementById('ep-desc').textContent = ep.desc;
   document.getElementById('hdr').style.background = BG_COLORS[ei] || '#060610';
 
-  // Phase tag
   const phaseIdx = ep.bigbang ? 0 : Math.min(ep.phase + 1, PHASE_LABELS.length - 1);
   const pt = document.getElementById('phase-tag');
   pt.textContent = (ep.bigbang ? 'big bang' : 'phase ' + ep.phase)
                    + ': ' + PHASE_LABELS[phaseIdx];
   pt.style.background = PHASE_COLORS[phaseIdx];
 
-  // Dominant entity display
   const domEl = document.getElementById('dom-cell');
   const domLb = document.getElementById('dom-label');
   if (ep.bigbang) {
     const hasSep = fr.tc[7] > 0 || fr.tc[0] > 0;
-    domEl.textContent = hasSep ? '☰' : '☯';   // ☰ or ☯
+    domEl.textContent = hasSep ? '☰' : '☯';
     domEl.style.color = hasSep ? PAL.trigs[7] : PAL.bb;
-    domLb.textContent = hasSep
-      ? '☰ heaven ascends · ☷ earth descends'
-      : 'primordial unity';
+    domLb.textContent = hasSep ? '☰ heaven ascends · ☷ earth descends' : 'primordial unity';
   } else if (ep.phase === 0) {
     const yin_dom = fr.yin >= fr.yang;
     domEl.textContent = yin_dom ? '⚋' : '⚊';
@@ -646,28 +650,30 @@ function render() {
     domLb.textContent = TMETA[topT].name + ' · ' + TMETA[topT].el;
   }
 
-  // Population counts
   const totalH = fr.hc.reduce((a,b)=>a+b,0);
   const totalT = fr.tc.reduce((a,b)=>a+b,0);
-  const pc = fr.yin + fr.yang > 20 ? '#40c060' : '#c04040';
   document.getElementById('pop-yin').textContent   = '⚋' + fr.yin   + ' ';
   document.getElementById('pop-yang').textContent  = '⚊' + fr.yang  + ' ';
   document.getElementById('pop-syin').textContent  = fr.syin  > 0 ? ('⚏' + fr.syin  + ' ') : '';
   document.getElementById('pop-syang').textContent = fr.syang > 0 ? ('⚌' + fr.syang + ' ') : '';
   if (ep.bigbang) {
-    document.getElementById('pop-tr').textContent =
-      '☰' + fr.tc[7] + ' ☷' + fr.tc[0] + ' ';
+    document.getElementById('pop-tr').textContent = '☰' + fr.tc[7] + ' ☷' + fr.tc[0] + ' ';
   } else {
-    document.getElementById('pop-tr').textContent =
-      (totalT > 0 ? ('☯' + totalT + ' ') : '');
+    document.getElementById('pop-tr').textContent = (totalT > 0 ? ('☯' + totalT + ' ') : '');
   }
   document.getElementById('pop-hx').textContent = totalH > 0 ? ('❖' + totalH) : '';
 
+  const H = (function(hc) {
+    const tot = hc.reduce((a,b)=>a+b,0);
+    if (!tot) return 0;
+    return -hc.reduce((s,c) => c>0 ? s+(c/tot)*Math.log2(c/tot) : s, 0);
+  })(fr.hc);
+  document.getElementById('ent-bar').style.width = (H / 6 * 100) + '%';
   document.getElementById('gen-label').textContent =
     'gen ' + String(tg).padStart(4, '0')
-    + '  ·  epoch ' + ei + ' / ' + (D.length - 1);
+    + '  ·  epoch ' + ei + ' / ' + (D.length - 1)
+    + (H > 0 ? '  ·  H ' + H.toFixed(2) : '');
 
-  // Progress bar
   const prog = fi / Math.max(1, ep.frames.length - 1);
   document.getElementById('pbar').style.width = (prog * 100) + '%';
   document.getElementById('pbar').style.background = PBAR_COLORS[ei];
@@ -676,7 +682,6 @@ function render() {
   drawChart(fr);
 }
 
-// ── Legend ────────────────────────────────────────────────────────
 (function() {
   const el = document.getElementById('trig-legend');
   el.style.display = 'flex'; el.style.gap = '6px';
@@ -688,7 +693,6 @@ function render() {
   });
 })();
 
-// ── Playback ──────────────────────────────────────────────────────
 let speed = 1;
 
 function next() {

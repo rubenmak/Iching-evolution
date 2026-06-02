@@ -205,16 +205,16 @@ HEXAGRAMS = {
 EPOCHS = [
     {
         "id":9, "phase":0, "conway":True,
-        "name":"陰陽流", "title":"BEFORE FORM",
-        "subtitle":"Yīn Yáng Liú · The Flowing",
-        "desc":"Conway rules govern the first stirring: lines born into three neighbours, surviving with two or three. Clusters drift and dissolve. Still-lifes crystallise in the void. These patterns will be the raw matter that chemistry forges into trigrams.",
+        "name":"無極", "title":"THE VOID",
+        "subtitle":"Wú Jí · The Formless",
+        "desc":"Before differentiation — only scattered sparks in formless space. Lines arise and dissolve by Conway rules: born into three neighbours, surviving with two or three. Clusters drift and vanish. What persists becomes the seed matter of all that follows.",
         "gens":40, "warmup":0, "init_yin":0.20, "init_yang":0.20,
     },
     {
         "id":0, "phase":0,
-        "name":"太極", "title":"THE VOID",
-        "subtitle":"Tài Jí · Supreme Ultimate",
-        "desc":"Yin and yang arise from undifferentiated potential. No higher form is yet possible.",
+        "name":"初形", "title":"FORM STIRS",
+        "subtitle":"Chū Xíng · Matter Condenses",
+        "desc":"The formless condenses into matter. Yin and yang lines proliferate and fill space — the field primes itself. No higher form yet, but the potential is everywhere.",
         "gens":80,  "warmup":10, "init_yin":0.20, "init_yang":0.20,
     },
     {
@@ -273,6 +273,27 @@ EPOCHS = [
         "desc":"A mutation triggers neighbours. Ripples spread outward — chain reactions rewrite the grid faster than any lineage can hold its form.",
         "gens":130, "warmup":70, "init_yin":0.20, "init_yang":0.20,
     },
+    {
+        "id":10, "phase":7,
+        "name":"失我", "title":"LOSS OF IDENTITY",
+        "subtitle":"Shī Wǒ · The Gradual Erasure",
+        "desc":"The Singularity has consumed all distinctions. Now the vertical field reasserts — Heaven above, Earth below. Each hexagram slowly loses its individual identity, aligning toward polarity. Watch the entropy bar fall: not into chaos but into structure. The unique sixty-four converge back toward the primal two.",
+        "gens":60, "warmup":0, "init_yin":0.20, "init_yang":0.20,
+    },
+    {
+        "id":11, "phase":8,
+        "name":"崩解", "title":"THE COLLAPSE",
+        "subtitle":"Bēng Jiě · Matryoshka Brain Dying",
+        "desc":"The star's energy is exhausted. Hexagrams can no longer sustain themselves — each dying cell falls back to its trigram root. No new complexity forms. What took aeons to build unravels in generations. The diversity that once was identity is now silence.",
+        "gens":50, "warmup":0, "init_yin":0.20, "init_yang":0.20,
+    },
+    {
+        "id":12, "phase":9,
+        "name":"歸虛", "title":"THE RETURN",
+        "subtitle":"Guī Xū · The Last Thinning",
+        "desc":"Only lines and trigrams remain, thinning slowly. Trigrams dissolve into lines; lines into void. The journey back has begun — not yet empty, not yet still. What persists at the end will meet the void.",
+        "gens":30, "warmup":0, "init_yin":0.05, "init_yang":0.05,
+    },
 ]
 
 # ── Core rules ────────────────────────────────────────────────────────────────
@@ -298,21 +319,9 @@ def _mutate_hex(c, nb, phase, has_cascade_neighbor):
     """
     Bernoulli mutation driven by raw bit counts across the 9-cell Moore
     neighbourhood (8 neighbours + self; max 9×6 = 54 bits).
-
-    p_yin  = yin_bits  / 54 × SCALE   — probability yin polarity fires
-    p_yang = yang_bits / 54 × SCALE   — probability yang polarity fires
-
-    Both drawn independently; if both fire, dominant count wins.
-    Yin fires  → flip one yin  bit to yang  (anti-ferromagnetic).
-    Yang fires → flip one yang bit to yin   (anti-ferromagnetic).
-    Fallback to any bit for extreme hexagrams (no candidates of that polarity).
-
-    Rate naturally accelerates in the singularity: hexagram neighbours
-    contribute 6× more bits than line neighbours, so probability scales
-    with neighbourhood informational density.
     """
     idx        = hex_idx(c)
-    all_cells  = list(nb) + [c]                  # 8 neighbours + self = 9
+    all_cells  = list(nb) + [c]
     yin_count  = sum(1 for cell in all_cells for b in get_lines(cell) if b == 0)
     yang_count = sum(1 for cell in all_cells for b in get_lines(cell) if b == 1)
 
@@ -331,13 +340,13 @@ def _mutate_hex(c, nb, phase, has_cascade_neighbor):
             fire_yin = False
 
     if fire_yin:
-        cands = [i for i in range(6) if (idx >> i) & 1 == 0]   # yin bits → flip to yang
+        cands = [i for i in range(6) if (idx >> i) & 1 == 0]
         if not cands:
             cands = list(range(6))
         return HEX_BASE + (idx ^ (1 << random.choice(cands)))
 
     if fire_yang:
-        cands = [i for i in range(6) if (idx >> i) & 1 == 1]   # yang bits → flip to yin
+        cands = [i for i in range(6) if (idx >> i) & 1 == 1]
         if not cands:
             cands = list(range(6))
         return HEX_BASE + (idx ^ (1 << random.choice(cands)))
@@ -345,18 +354,25 @@ def _mutate_hex(c, nb, phase, has_cascade_neighbor):
     return c
 
 
+def _realign_hex(c, nb, y, h):
+    """Phase 7: identity loss — bits realign toward vertical polarity."""
+    idx = hex_idx(c)
+    vertical_yang = 1.0 - y / max(1, h - 1)
+    SCALE = 0.12
+    if random.random() < vertical_yang * SCALE:
+        cands = [i for i in range(6) if (idx >> i) & 1 == 0]
+        if cands:
+            return HEX_BASE + (idx | (1 << random.choice(cands)))
+    elif random.random() < (1.0 - vertical_yang) * SCALE:
+        cands = [i for i in range(6) if (idx >> i) & 1 == 1]
+        if cands:
+            return HEX_BASE + (idx & ~(1 << random.choice(cands)))
+    return c
+
+
 def _birth(nb, phase, global_yang_frac=0.5, y=0, h=1):
     """
     New cell born on an empty spot.
-
-      Phase 2: Conway B3 on hex layer — exactly 3 hex neighbours → clone.
-      Phase 3: exactly 2 hex neighbours → crossover (land is scarce).
-      Phase 4: ≥2 hex neighbours → crossover; 1 neighbour → clone.
-               Industrial colonisation: one factory is enough to build another.
-      Phase 5-6: exactly 2 hex neighbours → crossover (genetic recombination).
-      All phases: lines born via Conway B3 with vertical + minority pressure.
-                  Heaven (yang) rises → top rows are yang-biased; Earth (yin)
-                  sinks → bottom rows are yin-biased.
     """
     hex_nbs = [c for c in nb if is_hexagram(c)]
 
@@ -369,19 +385,18 @@ def _birth(nb, phase, global_yang_frac=0.5, y=0, h=1):
     if phase == 4:
         if len(hex_nbs) >= 2:
             return _hex_crossover(random.sample(hex_nbs, 2))
-        if len(hex_nbs) == 1:
-            return HEX_BASE + hex_idx(hex_nbs[0])   # colonise from a single neighbour
+        if len(hex_nbs) == 1 and random.random() < 0.10:
+            return HEX_BASE + hex_idx(hex_nbs[0])
 
-    if phase >= 5 and len(hex_nbs) == 2:
+    if 5 <= phase <= 7 and len(hex_nbs) == 2:
         return _hex_crossover(hex_nbs)
 
-    # ── Line birth (Conway B3) with vertical + minority pressure ──────────────
     n = len(nb)
     if n == 3:
         bits = [b for nc in nb for b in get_lines(nc)]
         if bits:
             local_frac   = sum(bits) / len(bits)
-            vertical_yang = 1.0 - y / max(1, h - 1)  # 1.0 at top, 0.0 at bottom
+            vertical_yang = 1.0 - y / max(1, h - 1)
             frac_yang = 0.45 * local_frac + 0.15 * (1.0 - global_yang_frac) + 0.40 * vertical_yang
             return YANG if random.random() < frac_yang else YIN
 
@@ -395,13 +410,12 @@ class Grid:
         self.h = h
         self.cells = [[EMPTY] * w for _ in range(h)]
         self.generation  = 0
-        self.last_changed = set()   # positions (y,x) of hexagrams that mutated last gen
+        self.last_changed = set()
 
     def seed(self, ratio_yin=0.20, ratio_yang=0.20):
         total = ratio_yin + ratio_yang
         for y in range(self.h):
-            # vertical gradient: yang-biased at top (y=0), yin-biased at bottom
-            vertical_yang = 1.0 - y / max(1, self.h - 1)  # 1.0 top → 0.0 bottom
+            vertical_yang = 1.0 - y / max(1, self.h - 1)
             for x in range(self.w):
                 if random.random() < total:
                     self.cells[y][x] = YANG if random.random() < vertical_yang else YIN
@@ -419,11 +433,8 @@ class Grid:
 
     def step(self, phase, conway_lines=False):
         new     = [[EMPTY] * self.w for _ in range(self.h)]
-        changed = set()   # hexagram positions that mutated this gen
+        changed = set()
 
-        # Global yang fraction across ALL cell types — trigrams and hexagrams
-        # contribute their constituent line bits so a Heaven-heavy (☰) grid
-        # creates minority pressure toward yin even if raw line counts balance.
         total_yang_bits = total_bits = 0
         for row in self.cells:
             for c in row:
@@ -432,11 +443,8 @@ class Grid:
                 total_bits      += len(bits)
         global_yang_frac = total_yang_bits / total_bits if total_bits > 0 else 0.5
 
-        # Phase 2: pre-pair adjacent trigrams for simultaneous hexagram
-        # formation. Both cells transform in the same tick; if a trigram
-        # has several trigram neighbours one is chosen at random.
         trig_partner = {}
-        if phase >= 2:
+        if 2 <= phase < 8:
             used = set()
             for y in range(self.h):
                 for x in range(self.w):
@@ -468,12 +476,15 @@ class Grid:
                     new[y][x] = _birth(nb, phase, global_yang_frac, y, self.h)
 
                 elif is_any_line(c):
-                    if (n in (2, 3)) if conway_lines else _survives(c, n):
+                    if conway_lines:
+                        line_ok = n in (2, 3)
+                    elif phase == 9:
+                        line_ok = n in (2, 3)
+                    else:
+                        line_ok = _survives(c, n)
+                    if line_ok:
                         if is_strong_line(c):
-                            # Strong (old) lines always change to opposite polarity.
-                            # They can still form a trigram if conditions are met —
-                            # using their base polarity for the middle bit.
-                            if phase >= 1:
+                            if 1 <= phase <= 8:
                                 line_nbs = [nc for nc in nb if is_any_line(nc)]
                                 if len(line_nbs) >= 2 and random.random() < 0.6:
                                     north = self.cells[(y - 1) % self.h][x]
@@ -485,13 +496,11 @@ class Grid:
                                           else (1 if line_yang(random.choice(line_nbs)) else 0)
                                     new[y][x] = TRIG_BASE + (bot | (mid << 1) | (top << 2))
                                 else:
-                                    # Change to opposite
                                     new[y][x] = YIN if c == STRONG_YANG else YANG
                             else:
                                 new[y][x] = YIN if c == STRONG_YANG else YANG
                         else:
-                            # Regular line: check for trigram formation or becoming strong
-                            if phase >= 1:
+                            if 1 <= phase <= 8:
                                 line_nbs = [nc for nc in nb if is_any_line(nc)]
                                 if len(line_nbs) >= 2 and random.random() < 0.6:
                                     north = self.cells[(y - 1) % self.h][x]
@@ -503,12 +512,17 @@ class Grid:
                                           else (1 if line_yang(random.choice(line_nbs)) else 0)
                                     new[y][x] = TRIG_BASE + (bot | (mid << 1) | (top << 2))
                                 else:
-                                    # Become strong if 3+ same-polarity neighbours
-                                    same = sum(1 for nc in nb if line_yang(nc) == (c == YANG))
-                                    if same >= 3:
-                                        new[y][x] = STRONG_YANG if c == YANG else STRONG_YIN
+                                    if phase == 7:
+                                        if random.random() < 0.20:
+                                            new[y][x] = STRONG_YANG if c == YANG else STRONG_YIN
+                                        else:
+                                            new[y][x] = c
                                     else:
-                                        new[y][x] = c
+                                        same = sum(1 for nc in nb if line_yang(nc) == (c == YANG))
+                                        if same >= 3:
+                                            new[y][x] = STRONG_YANG if c == YANG else STRONG_YIN
+                                        else:
+                                            new[y][x] = c
                             else:
                                 same = sum(1 for nc in nb if line_yang(nc) == (c == YANG))
                                 if same >= 3:
@@ -518,32 +532,43 @@ class Grid:
 
                 elif is_trigram(c):
                     if (y, x) in trig_partner:
-                        # Both trigrams become hexagrams simultaneously.
-                        # Self = lower trigram (bits 0-2), partner = upper (bits 3-5).
                         ny, nx  = trig_partner[(y, x)]
                         partner = self.cells[ny][nx]
                         genome  = trig_idx(c) | (trig_idx(partner) << 3)
                         new[y][x] = HEX_BASE + (genome & 63)
+                    elif phase in (8, 9):
+                        p_trig_to_line = 0.015 if phase == 8 else 0.035
+                        if random.random() < p_trig_to_line:
+                            idx = trig_idx(c)
+                            new[y][x] = YANG if bin(idx).count('1') >= 2 else YIN
+                        elif phase == 8 or _survives(c, n):
+                            new[y][x] = c
                     elif _survives(c, n):
                         new[y][x] = c
 
                 elif is_hexagram(c):
                     hex_n = sum(1 for nc in nb if is_hexagram(nc))
 
-                    # Phase-specific survival ──────────────────────────────
-                    # 2 hunter-gatherer: Conway S23 on hex layer (mobile clusters)
-                    # 3 agricultural:    survive up to 4; 5+ = overpopulation → void
-                    # 4+ industrial+:    immortal, never die from crowding
                     if phase == 2:
                         survives = hex_n in (2, 3)
                     elif phase == 3:
                         survives = hex_n in (2, 3, 4)
-                    else:           # phase 4, 5, 6 — immortal
+                    elif phase == 8:
+                        trig_n = sum(1 for nc in nb if is_trigram(nc))
+                        p_decay = min(0.95, 0.004 + trig_n * 0.12)
+                        survives = random.random() >= p_decay
+                    elif phase == 9:
+                        survives = False
+                    else:
                         survives = True
 
                     if survives:
-                        if phase >= 5:
-                            # Digital / Singularity: bit-flip mutation
+                        if phase == 7:
+                            new_c = _realign_hex(c, nb, y, self.h)
+                            if new_c != c:
+                                changed.add((y, x))
+                            new[y][x] = new_c
+                        elif 5 <= phase <= 6:
                             has_cascade = phase == 6 and any(
                                 ((y + dy) % self.h, (x + dx) % self.w) in self.last_changed
                                 for dy in (-1, 0, 1) for dx in (-1, 0, 1)
@@ -554,9 +579,6 @@ class Grid:
                                 changed.add((y, x))
                             new[y][x] = new_c
                         elif phase == 4:
-                            # Industrial: occasional recombination with neighbours.
-                            # Represents innovation — established hexagrams merge
-                            # with adjacent ones to produce novel variants.
                             hex_nbs_list = [nc for nc in nb if is_hexagram(nc)]
                             if len(hex_nbs_list) >= 2 and random.random() < 0.12:
                                 new[y][x] = _hex_crossover(random.sample(hex_nbs_list, 2))
@@ -564,6 +586,8 @@ class Grid:
                                 new[y][x] = c
                         else:
                             new[y][x] = c
+                    elif phase in (8, 9):
+                        new[y][x] = TRIG_BASE + (hex_idx(c) & 7)
 
         self.last_changed = changed
         self.cells = new
