@@ -354,6 +354,22 @@ def _mutate_hex(c, nb, phase, has_cascade_neighbor):
     return c
 
 
+def _hex_align(c, hex_nbs, strength=0.22):
+    """Phase 3: agricultural clustering — each bit drifts toward the local majority."""
+    if not hex_nbs:
+        return c
+    idx = hex_idx(c)
+    result = idx
+    for bit in range(6):
+        yang_votes = sum(1 for nc in hex_nbs if (hex_idx(nc) >> bit) & 1)
+        own_bit = (idx >> bit) & 1
+        if yang_votes > len(hex_nbs) - yang_votes and own_bit == 0 and random.random() < strength:
+            result |= (1 << bit)
+        elif yang_votes < len(hex_nbs) - yang_votes and own_bit == 1 and random.random() < strength:
+            result &= ~(1 << bit)
+    return HEX_BASE + result
+
+
 def _realign_hex(c, nb, y, h):
     """Phase 7: identity loss — bits realign toward vertical polarity."""
     idx = hex_idx(c)
@@ -379,13 +395,13 @@ def _birth(nb, phase, global_yang_frac=0.5, y=0, h=1):
     if phase == 2 and len(hex_nbs) == 3:
         return HEX_BASE + hex_idx(random.choice(hex_nbs))
 
-    if phase == 3 and len(hex_nbs) == 2:
+    if phase == 3 and len(hex_nbs) == 2 and random.random() < 0.50:
         return _hex_crossover(hex_nbs)
 
     if phase == 4:
-        if len(hex_nbs) >= 2:
+        if len(hex_nbs) >= 2 and random.random() < 0.12:
             return _hex_crossover(random.sample(hex_nbs, 2))
-        if len(hex_nbs) == 1 and random.random() < 0.10:
+        if len(hex_nbs) == 1 and random.random() < 0.04:
             return HEX_BASE + hex_idx(hex_nbs[0])
 
     if 5 <= phase <= 7 and len(hex_nbs) == 2:
@@ -563,7 +579,13 @@ class Grid:
                         survives = True
 
                     if survives:
-                        if phase == 7:
+                        if phase == 3:
+                            hex_nbs_list = [nc for nc in nb if is_hexagram(nc)]
+                            new_c = _hex_align(c, hex_nbs_list)
+                            if new_c != c:
+                                changed.add((y, x))
+                            new[y][x] = new_c
+                        elif phase == 7:
                             new_c = _realign_hex(c, nb, y, self.h)
                             if new_c != c:
                                 changed.add((y, x))
