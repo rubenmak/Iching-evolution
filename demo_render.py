@@ -309,7 +309,6 @@ h2 { font-size: .58em; color: #281e40; letter-spacing: .14em; text-align: center
 #pbar { height: 100%; width: 0; transition: width .18s linear; }
 #ent-wrap { height: 3px; background: #080618; }
 #ent-bar  { height: 100%; width: 0; transition: width .3s ease; background: #3858b0; }
-#yy-bar   { height: 4px; background: #3ab84a; transition: background .3s ease; }
 #legend { padding: 4px 8px 3px; border-top: 1px solid #100818;
           font-size: .58em; color: #302048; display: flex; gap: 10px;
           flex-wrap: wrap; align-items: center; }
@@ -357,7 +356,6 @@ button.tog:not(.active) { opacity: 0.22; }
   </div>
   <div id="pbar-wrap"><div id="pbar"></div></div>
   <div id="ent-wrap"><div id="ent-bar"></div></div>
-  <div id="yy-bar"></div>
   <canvas id="cgrid"  width="__GPW__" height="__GPH__"></canvas>
   <canvas id="cchart" width="__GPW__" height="__CHTH__"></canvas>
   <div id="legend">
@@ -665,25 +663,23 @@ function render() {
   }
   document.getElementById('pop-hx').textContent = totalH > 0 ? ('❖' + totalH) : '';
 
-  const H = (function(hc) {
-    const tot = hc.reduce((a,b)=>a+b,0);
-    if (!tot) return 0;
-    return -hc.reduce((s,c) => c>0 ? s+(c/tot)*Math.log2(c/tot) : s, 0);
-  })(fr.hc);
-  document.getElementById('ent-bar').style.width = (H / 6 * 100) + '%';
-
-  (function() {
-    function pc(n) { let c=0; while(n){c+=n&1;n>>=1;} return c; }
-    let yinB=0, yangB=0;
-    yinB  += fr.yin  + (fr.syin  || 0);
-    yangB += fr.yang + (fr.syang || 0);
-    for (let i=0;i<8; i++) { const y=pc(i); yangB+=fr.tc[i]*y; yinB+=fr.tc[i]*(3-y); }
-    for (let i=0;i<64;i++) { const y=pc(i); yangB+=fr.hc[i]*y; yinB+=fr.hc[i]*(6-y); }
-    const tot = yinB + yangB;
-    const yinPct = tot > 0 ? yinB / tot * 100 : 50;
-    document.getElementById('yy-bar').style.background =
-      `linear-gradient(to right, #3ab84a ${yinPct.toFixed(2)}%, #e0c814 ${yinPct.toFixed(2)}%)`;
+  const H = (function() {
+    function sh(counts) {
+      const tot = counts.reduce((a,b)=>a+b,0);
+      if (!tot) return 0;
+      return -counts.reduce((s,c) => c>0 ? s+(c/tot)*Math.log2(c/tot) : s, 0);
+    }
+    const lineN  = fr.yin + fr.yang + (fr.syin||0) + (fr.syang||0);
+    const trigN  = fr.tc.reduce((a,b)=>a+b,0);
+    const hexN   = fr.hc.reduce((a,b)=>a+b,0);
+    const total  = lineN + trigN + hexN;
+    if (!total) return 0;
+    const hL = lineN > 0 ? sh([fr.yin, fr.yang, fr.syin||0, fr.syang||0]) / Math.log2(4) : 0;
+    const hT = trigN > 0 ? sh(fr.tc) / Math.log2(8) : 0;
+    const hX = hexN  > 0 ? sh(fr.hc) / Math.log2(64) : 0;
+    return (hL * lineN + hT * trigN + hX * hexN) / total;
   })();
+  document.getElementById('ent-bar').style.width = (H * 100) + '%';
   document.getElementById('gen-label').textContent =
     'gen ' + String(tg).padStart(4, '0')
     + '  ·  epoch ' + ei + ' / ' + (D.length - 1)
