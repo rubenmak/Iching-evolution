@@ -404,8 +404,8 @@ def _birth(nb, phase, global_yang_frac=0.5, y=0, h=1):
         if len(hex_nbs) == 1 and random.random() < 0.04:
             return HEX_BASE + hex_idx(hex_nbs[0])
 
-    if 5 <= phase <= 7 and len(hex_nbs) == 2:
-        return _hex_crossover(hex_nbs)
+    if 5 <= phase <= 7 and len(hex_nbs) >= 2:
+        return _hex_crossover(random.sample(hex_nbs, 2))
 
     n = len(nb)
     if n == 3:
